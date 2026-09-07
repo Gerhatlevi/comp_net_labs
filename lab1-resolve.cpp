@@ -90,21 +90,30 @@ int main( int aArgc, char* aArgv[] )
 	}
 
 	// print out the discovered information
-	sockaddr* sockAddr = ai_res->ai_addr;
-	assert(AF_INET == sockAddr->sa_family);
+	addrinfo* ai_origin = ai_res;
+	while (ai_res) {
+    	sockaddr* sockAddr = ai_res->ai_addr;
+    	assert(AF_INET == sockAddr->sa_family);
 
-	sockaddr_in* inAddr = (sockaddr_in*)sockAddr;
-	int port = inAddr->sin_port;
-	uint32_t ipNumber = inAddr->sin_addr.s_addr;
+    	sockaddr_in* inAddr = (sockaddr_in*)sockAddr;
 
-	// resolve ip int to human readable for IPv4
-	char readableIPv4[INET_ADDRSTRLEN];
-	const char* error = inet_ntop(sockAddr->sa_family, sockAddr->sa_data, readableIPv4, inAddr->sin_len);
-	error = inet_ntop(sockAddr->sa_family, &inAddr->sin_addr, readableIPv4, inAddr->sin_len);
-	printf("IPv4: %s", readableIPv4);
+    	// resolve ip int to human readable for IPv4
+    	char readableIPv4[INET_ADDRSTRLEN];
+    	const char* error = inet_ntop(sockAddr->sa_family, sockAddr->sa_data, readableIPv4, inAddr->sin_len);
+        if (!error) {
+            printf("Failed to parse ip address");
+        }
+    	error = inet_ntop(sockAddr->sa_family, &inAddr->sin_addr, readableIPv4, inAddr->sin_len);
+        if (!error) {
+            printf("Failed to parse ip address");
+        }
+    	printf("IPv4: %s\n", readableIPv4);
+
+        ai_res = ai_res->ai_next;
+	}
 
 	// free the created object
-	freeaddrinfo(ai_res);
+	freeaddrinfo(ai_origin);
 
 	return 0;
 }
