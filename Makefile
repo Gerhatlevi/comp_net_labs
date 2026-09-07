@@ -5,3 +5,4 @@ resolve: lab1-resolve.cpp
 
 clean:
 	-rm -f resolve
+	-rm -rf *.dSYM/
