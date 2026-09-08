@@ -97,7 +97,8 @@ int main( int aArgc, char* aArgv[] )
     	sockaddr* sockAddr = ai_res->ai_addr;
     	assert(AF_INET == sockAddr->sa_family || AF_INET6 == sockAddr->sa_family);
 
-    	sockaddr_in* inAddr = (sockaddr_in*)sockAddr;
+    	sockaddr_in* inAddr;
+        sockaddr_in6* inAddr6;
 
     	// resolve ip int to human readable
         const char* error;
@@ -106,6 +107,7 @@ int main( int aArgc, char* aArgv[] )
 
         switch (sockAddr->sa_family) {
             case AF_INET:
+                inAddr = (sockaddr_in*)sockAddr;
                	error = inet_ntop(AF_INET, &inAddr->sin_addr, readableIPv4, INET_ADDRSTRLEN);
                 if (!error) {
                     printf("Failed to parse IP address");
@@ -113,7 +115,8 @@ int main( int aArgc, char* aArgv[] )
                	printf("IPv4: %s\n", readableIPv4);
                 break;
             case AF_INET6:
-               	error = inet_ntop(AF_INET6, &inAddr->sin_addr, readableIPv6, INET6_ADDRSTRLEN);
+                inAddr6 = (sockaddr_in6*)sockAddr;
+               	error = inet_ntop(AF_INET6, &inAddr6->sin6_addr, readableIPv6, INET6_ADDRSTRLEN);
                 if (!error) {
                     printf("Failed to parse IP address");
                 }
