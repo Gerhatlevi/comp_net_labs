@@ -12,6 +12,7 @@
 #include <netinet/in.h>
 #include <stdio.h>
 #include <stddef.h>
+#include <string.h>
 
 #include <assert.h>
 #include <limits.h>
@@ -71,16 +72,17 @@ int main( int aArgc, char* aArgv[] )
 	printf( "Resolving `%s' from `%s':\n", remoteHostName, localHostName );
 
 	// Construct the addrinfo struct for hints
-	addrinfo ai_struct = addrinfo{
-	    .ai_family = AF_INET,
-	    .ai_socktype = SOCK_STREAM,
-		.ai_protocol = IPPROTO_TCP
-	};
+	struct addrinfo hints;
+	memset(&hints, 0, sizeof(hints));
+	// use AF_UNSPEC to allow for both IPv4 and IPv6 interfaces
+	hints.ai_family = AF_UNSPEC;
+	hints.ai_socktype = SOCK_STREAM;
+	hints.ai_protocol = IPPROTO_TCP;
 
 	// pointer to the results from the address info
 	addrinfo* ai_res;
 	// Use getaddrinfo to lookup the ip address
-	int error_code = getaddrinfo(remoteHostName, nullptr, &ai_struct, &ai_res);
+	int error_code = getaddrinfo(remoteHostName, nullptr, &hints, &ai_res);
 
 	// Handle potential error codes from hostname lookup
 	if (error_code) {
@@ -93,21 +95,33 @@ int main( int aArgc, char* aArgv[] )
 	addrinfo* ai_origin = ai_res;
 	while (ai_res) {
     	sockaddr* sockAddr = ai_res->ai_addr;
-    	assert(AF_INET == sockAddr->sa_family);
+    	assert(AF_INET == sockAddr->sa_family || AF_INET6 == sockAddr->sa_family);
 
     	sockaddr_in* inAddr = (sockaddr_in*)sockAddr;
 
-    	// resolve ip int to human readable for IPv4
-    	char readableIPv4[INET_ADDRSTRLEN];
-    	const char* error = inet_ntop(sockAddr->sa_family, sockAddr->sa_data, readableIPv4, inAddr->sin_len);
-        if (!error) {
-            printf("Failed to parse ip address");
+    	// resolve ip int to human readable
+        const char* error;
+        char readableIPv4[INET_ADDRSTRLEN];
+        char readableIPv6[INET_ADDRSTRLEN];
+
+        switch (sockAddr->sa_family) {
+            case AF_INET:
+               	error = inet_ntop(AF_INET, &inAddr->sin_addr, readableIPv4, INET_ADDRSTRLEN);
+                if (!error) {
+                    printf("Failed to parse IP address");
+                }
+               	printf("IPv4: %s\n", readableIPv4);
+                break;
+            case AF_INET6:
+               	error = inet_ntop(AF_INET6, &inAddr->sin_addr, readableIPv6, INET6_ADDRSTRLEN);
+                if (!error) {
+                    printf("Failed to parse IP address");
+                }
+               	printf("IPv6: %s\n", readableIPv6);
+                break;
+            default:
+                printf("Protocol Family Not Supported: %d", sockAddr->sa_family);
         }
-    	error = inet_ntop(sockAddr->sa_family, &inAddr->sin_addr, readableIPv4, inAddr->sin_len);
-        if (!error) {
-            printf("Failed to parse ip address");
-        }
-    	printf("IPv4: %s\n", readableIPv4);
 
         ai_res = ai_res->ai_next;
 	}
