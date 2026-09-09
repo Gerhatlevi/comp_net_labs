@@ -21,6 +21,112 @@
 #include <limits>
 #include <algorithm>
 
+/* I.d.1
+./client-multi 0.0.0.0 5703 7 255
+Simulating 7 clients.
+Establishing 7 connections... 
+  successfully initiated 7 connection attempts!
+Connect timing results for 7 successful connections
+  - min time: 0.114076 ms
+  - max time: 0.273498 ms
+  - average time: 0.171688 ms
+ (0 connections failed!)
+Roundtrip timing results for 7 connections for 255 round trips
+  - min time: 6.357833 ms
+  - max time: 29.392135 ms
+  - average time: 18.213478 ms
+
+
+Simulating 50 clients.
+Establishing 50 connections... 
+  successfully initiated 50 connection attempts!
+Connect timing results for 50 successful connections
+  - min time: 0.653529 ms
+  - max time: 1016.730048 ms
+  - average time: 813.407846 ms
+ (0 connections failed!)
+Roundtrip timing results for 50 connections for 255 round trips
+  - min time: 9.043436 ms
+  - max time: 880.486816 ms
+  - average time: 323.025836 ms
+  
+ max and average are much larger, but no errors occured
+
+ ./client-multi 0.0.0.0 5703 7 5000
+Simulating 7 clients.
+Establishing 7 connections... 
+  successfully initiated 7 connection attempts!
+Connect timing results for 7 successful connections
+  - min time: 0.108656 ms
+  - max time: 0.262938 ms
+  - average time: 0.165832 ms
+ (0 connections failed!)
+Roundtrip timing results for 7 connections for 5000 round trips
+  - min time: 76.419634 ms
+  - max time: 502.424422 ms
+  - average time: 292.276587 ms
+
+Connection time same, RTT time larger
+
+
+
+./client-multi 0.0.0.0 5703 100 10000
+Simulating 100 clients.
+Establishing 100 connections... 
+  successfully initiated 100 connection attempts!
+  - conn 27 : error in recv() : Connection reset by peer
+  - conn 28 : error in recv() : Connection reset by peer
+  - conn 29 : error in recv() : Connection reset by peer
+  - conn 30 : error in recv() : Connection reset by peer
+  - conn 86 : error in recv() : Connection reset by peer
+  - conn 87 : error in recv() : Connection reset by peer
+  - conn 88 : error in recv() : Connection reset by peer
+  - conn 31 : error in recv() : Connection reset by peer
+  - conn 32 : error in recv() : Connection reset by peer
+  - conn 33 : error in recv() : Connection reset by peer
+  - conn 34 : error in recv() : Connection reset by peer
+  - conn 35 : error in recv() : Connection reset by peer
+  - conn 36 : error in recv() : Connection reset by peer
+  - conn 37 : error in recv() : Connection reset by peer
+  - conn 38 : error in recv() : Connection reset by peer
+  - conn 39 : error in recv() : Connection reset by peer
+  - conn 40 : error in recv() : Connection reset by peer
+  - conn 41 : error in recv() : Connection reset by peer
+  - conn 42 : error in recv() : Connection reset by peer
+  - conn 43 : error in recv() : Connection reset by peer
+  - conn 44 : error in recv() : Connection reset by peer
+  - conn 45 : error in recv() : Connection reset by peer
+  - conn 46 : error in recv() : Connection reset by peer
+  - conn 47 : error in recv() : Connection reset by peer
+  - conn 48 : error in recv() : Connection reset by peer
+  - conn 49 : error in recv() : Connection reset by peer
+  - conn 50 : error in recv() : Connection reset by peer
+  - conn 51 : error in recv() : Connection reset by peer
+  - conn 52 : error in recv() : Connection reset by peer
+  - conn 53 : error in recv() : Connection reset by peer
+  - conn 54 : error in recv() : Connection reset by peer
+  - conn 55 : error in recv() : Connection reset by peer
+  - conn 56 : error in recv() : Connection reset by peer
+  - conn 57 : error in recv() : Connection reset by peer
+  - conn 58 : error in recv() : Connection reset by peer
+  - conn 59 : error in recv() : Connection reset by peer
+  - conn 60 : error in recv() : Connection reset by peer
+  - conn 61 : error in recv() : Connection reset by peer
+Connect timing results for 100 successful connections
+  - min time: 1.317889 ms
+  - max time: 1030.538285 ms
+  - average time: 926.979752 ms
+ (0 connections failed!)
+Roundtrip timing results for 62 connections for 10000 round trips
+  - min time: 342.677739 ms
+  - max time: 55322.584630 ms
+  - average time: 18214.184895 ms
+
+
+  
+ 
+  */
+
 //--//////////////////////////////////////////////////////////////////////////
 //--    configurables       ///{{{1///////////////////////////////////////////
 

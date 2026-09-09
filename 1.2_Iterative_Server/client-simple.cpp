@@ -45,7 +45,7 @@
 #define VERIFY_MESSAGE 1
 
 // Measure round trip time. 
-#define MEASURE_ROUND_TRIP_TIME 0
+#define MEASURE_ROUND_TRIP_TIME 1
 
 // Size of the input buffer. This also corresponds to the largest single 
 // query the client can send.

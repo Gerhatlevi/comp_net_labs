@@ -230,6 +230,12 @@ static bool process_client_recv( ConnectionData& cd )
 	assert( cd.state == eConnStateReceiving );
 
 	// receive from socket
+	//I.a.2 
+	// -1 -> Error
+	// 0 -> orderly shutdown or 0 requested
+	// ret < buffersize -> read less than the buffer
+	// ret = buffer -> buffer is full
+	// +1, because \0 at the end
 	ssize_t ret = recv( cd.sock, cd.buffer, kTransferBufferSize, 0 );
 
 	if( 0 == ret )
@@ -271,6 +277,9 @@ static bool process_client_send( ConnectionData& cd )
 	assert( cd.state == eConnStateSending );
 
 	// send as much data as possible from buffer
+	// I.a.3
+	// closed/reset -> returns with 1
+	// MSG_NOSGIGNAL -> does not send SIGPIPE, does not get terminated
 	ssize_t ret = send( cd.sock, 
 		cd.buffer+cd.bufferOffset, 
 		cd.bufferSize-cd.bufferOffset,
@@ -306,6 +315,10 @@ static bool process_client_send( ConnectionData& cd )
 //--    setup_server_socket()   ///{{{1///////////////////////////////////////
 static int setup_server_socket( short port )
 {
+	//I.c.1
+	// Can only communicate with one
+	// No other communication until first one is terminated
+	// When disconnect we get msg on client 2 cus it was in the queue with an estabilished connection (netstat confirms -> 2 client but only 1 server)	
 	// create new socket file descriptor
 	int fd = socket( AF_INET, SOCK_STREAM, 0 );
 	if( -1 == fd )
@@ -319,6 +332,7 @@ static int setup_server_socket( short port )
 	memset( &servAddr, 0, sizeof(servAddr) );
 
 	servAddr.sin_family = AF_INET;
+	// I.a.1: INADDRY_ANY -> to all interfaces (0.0.0.0)
 	servAddr.sin_addr.s_addr = htonl(INADDR_ANY);
 	servAddr.sin_port = htons(port);
 
