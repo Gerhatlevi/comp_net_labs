@@ -10,7 +10,7 @@
  * Build the client using e.g.
  * 		$ g++ -Wall -Wextra -o client-simple client-simple.cpp
  *
- * If MEASURE_ROUND_TRIP_TIME is enabled (=1), the program may need to be 
+ * If MEASURE_ROUND_TRIP_TIME is enabled (=1), the program may need to be
  * linked against additional libraries. On linux this is librt (-lrt):
  * 		$ g++ -Wall -Wextra -o client-simple client-simple.cpp -lrt
  *
@@ -37,17 +37,17 @@
 //--//////////////////////////////////////////////////////////////////////////
 //--    configurables       ///{{{1///////////////////////////////////////////
 
-// Set VERBOSE to 0 to suppress non-essential output. 
+// Set VERBOSE to 0 to suppress non-essential output.
 #define VERBOSE 1
 
 // Verify that the message received from the server is equal to the one
 // the client sends.
 #define VERIFY_MESSAGE 1
 
-// Measure round trip time. 
-#define MEASURE_ROUND_TRIP_TIME 0
+// Measure round trip time.
+#define MEASURE_ROUND_TRIP_TIME 1
 
-// Size of the input buffer. This also corresponds to the largest single 
+// Size of the input buffer. This also corresponds to the largest single
 // query the client can send.
 const size_t kInputBufferSize = 256;
 
@@ -81,8 +81,8 @@ int main( int argc, char* argv[] )
 	// get program arguments (server address and port)
 	if( argc != 3 )
 	{
-		fprintf( stderr, "Error %s arguments\n", 
-			argc < 3 ? "insufficient":"too many" 
+		fprintf( stderr, "Error %s arguments\n",
+			argc < 3 ? "insufficient":"too many"
 		);
 		fprintf( stderr, "  usage: %s <server> <port>\n", argv[0] );
 		return 1;
@@ -97,12 +97,53 @@ int main( int argc, char* argv[] )
 #	endif
 
 	// establish connection to server
+	// I.b.1 in connect_to_server we get error messages such as:
+	// Error - cannot resolve address
+	// socket() failed
+	// connect() failed
+	//
+	// and on success, we receive a shell with "Input>" waiting for us to type
+	//
+	// Specifically, we get info back from
+	// if( -1 == connect( fd, (const sockaddr*)&servAddr, sizeof(servAddr) ) )
+	// that will tell us if the connect failed, and the errno value will be populated
+	// with the particular error condition in the case of failure.
 	int connfd = connect_to_server( serverAddress, serverPort );
 
 	if( -1 == connfd )
 		return 1;
 
 	// main loop: read user input, send to server and receive server reply
+	// I.c.1 When multiple are connected, the second connection does not get confirmation the message sent
+	// and it is waiting forever until the server is free from the first client connection. The code
+	// in the server shows that it just processes the data from the first connection in an infinite loop
+	// and won't process the next socket until the first is removed. The server does not show that the
+	// second socket has connected until after the first connection is closed.
+	//
+	// For netstat, it shows both of the clients are connected
+	// tcp4       0      0  localhost.5703         localhost.57256        ESTABLISHED
+    // tcp4       0      0  localhost.57256        localhost.5703         ESTABLISHED
+    // tcp4       0      0  localhost.5703         localhost.57255        ESTABLISHED
+    // tcp4       0      0  localhost.57255        localhost.5703         ESTABLISHED
+    //
+    // I.c.2 When the first connect dropped, it allowed the code to progress in the main server because the
+    // only way out of the client loop is on disconnect or error in the client connection.
+    //
+    // I.c.3
+    // Local Round Trip Times:
+    //   0.4697 ms
+    //   0.4523 ms
+    //   0.4360 ms
+    //   0.3998 ms
+    //   0.4365 ms
+    // Remote Round Trip Times:
+    //   3.1063 ms
+    //   7.3562 ms
+    //   7.6934 ms
+    //   7.8679 ms
+    //   7.9453 ms
+    //
+    // I.c.4 The largest factor in RTT for the second client is how long the first client stays connected
 	while( 1 )
 	{
 		char inputBuffer[kInputBufferSize];
@@ -132,8 +173,8 @@ int main( int argc, char* argv[] )
 		while( remaining > 0 )
 		{
 			ssize_t offset = inputLength - remaining;
-			ssize_t ret = send( connfd, 
-				inputBuffer+offset, 
+			ssize_t ret = send( connfd,
+				inputBuffer+offset,
 				remaining,
 				MSG_NOSIGNAL
 			);
@@ -186,7 +227,7 @@ int main( int argc, char* argv[] )
 		// print output to screen
 		printf( "Response = `%s'\n", recvBuffer );
 #		if VERIFY_MESSAGE
-		bool match = 0 == strncmp( inputBuffer, recvBuffer, 
+		bool match = 0 == strncmp( inputBuffer, recvBuffer,
 			std::min( kInputBufferSize, kReceiveBufferSize )
 		);
 
@@ -223,20 +264,20 @@ static int connect_to_server( const char* addr, const char* port )
 
 		addrinfo* result = 0;
 		int ret = getaddrinfo( addr, port, &hints, &result );
-		
+
 		if( 0 != ret )
 		{
 			fprintf( stderr, "Error - cannot resolve address: %s\n",
-				gai_strerror(ret) 
+				gai_strerror(ret)
 			);
 
 			return -1;
 		}
-		
+
 		bool ok = false;
 		for( addrinfo* res = result; res; res = res->ai_next )
 		{
-			if( res->ai_family == AF_INET 
+			if( res->ai_family == AF_INET
 				&& res->ai_addrlen == sizeof(sockaddr_in) )
 			{
 				ok = true;
@@ -256,7 +297,7 @@ static int connect_to_server( const char* addr, const char* port )
 
 	// allocate socket
 	int fd = socket( AF_INET, SOCK_STREAM, 0 );
-	
+
 	if( -1 == fd )
 	{
 		perror( "socket() failed" );
@@ -281,7 +322,7 @@ static int connect_to_server( const char* addr, const char* port )
  * time on different platforms.
  */
 
-/* Note: timer code implementations are provided for Linux, Mac OS X and 
+/* Note: timer code implementations are provided for Linux, Mac OS X and
  * Windows. If you're running this on a different platform, you'll probably
  * have to write your own code.
  *
@@ -303,7 +344,7 @@ static double get_time_stamp()
 	timespec currentTime;
 	clock_gettime( CLOCK_REALTIME, &currentTime );
 
-	return (currentTime.tv_sec - initTime.tv_sec) + 
+	return (currentTime.tv_sec - initTime.tv_sec) +
 		1e-9*(currentTime.tv_nsec - initTime.tv_nsec);
 }
 
@@ -352,4 +393,4 @@ static double get_time_stamp()
 #	endif // platform
 #endif // MEASURE_ROUND_TRIP_TIME
 
-//--///}}}1//////////////// vim:syntax=cpp:foldmethod=marker:ts=4:noexpandtab: 
+//--///}}}1//////////////// vim:syntax=cpp:foldmethod=marker:ts=4:noexpandtab:

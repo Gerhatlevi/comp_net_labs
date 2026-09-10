@@ -1,0 +1,4 @@
+*.dSYM/*
+client-simple
+client-multi
+server
