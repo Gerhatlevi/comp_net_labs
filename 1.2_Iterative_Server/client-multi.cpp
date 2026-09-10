@@ -37,6 +37,8 @@ Roundtrip timing results for 7 connections for 255 round trips
   - average time: 18.213478 ms
 
 
+I.d.2
+/client-multi 0.0.0.0 5703 50 255
 Simulating 50 clients.
 Establishing 50 connections... 
   successfully initiated 50 connection attempts!
@@ -68,7 +70,7 @@ Roundtrip timing results for 7 connections for 5000 round trips
 
 Connection time same, RTT time larger
 
-
+I.d.3
 
 ./client-multi 0.0.0.0 5703 100 10000
 Simulating 100 clients.
@@ -122,8 +124,9 @@ Roundtrip timing results for 62 connections for 10000 round trips
   - max time: 55322.584630 ms
   - average time: 18214.184895 ms
 
-
+timeout started around 2 minutes
   
+
  
   */
 

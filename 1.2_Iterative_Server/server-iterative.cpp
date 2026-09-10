@@ -278,7 +278,7 @@ static bool process_client_send( ConnectionData& cd )
 
 	// send as much data as possible from buffer
 	// I.a.3
-	// closed/reset -> returns with 1
+	// closed/reset -> returns with 1, create errno
 	// MSG_NOSGIGNAL -> does not send SIGPIPE, does not get terminated
 	ssize_t ret = send( cd.sock, 
 		cd.buffer+cd.bufferOffset, 
@@ -318,6 +318,7 @@ static int setup_server_socket( short port )
 	//I.c.1
 	// Can only communicate with one
 	// No other communication until first one is terminated
+	//I.c.2
 	// When disconnect we get msg on client 2 cus it was in the queue with an estabilished connection (netstat confirms -> 2 client but only 1 server)	
 	// create new socket file descriptor
 	int fd = socket( AF_INET, SOCK_STREAM, 0 );

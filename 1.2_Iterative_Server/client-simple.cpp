@@ -34,6 +34,36 @@
 
 #include <algorithm>
 
+/*
+I.c.3
+on same:
+./client-simple 0.0.0.0 5703
+Input> aaaaa
+Sending string `aaaaa' (5 bytes)
+Response = `aaaaa'
+  - response does match original query
+  - round trip time is 0.161108 ms
+
+
+
+I.c.4
+first client
+Input> helo
+Sending string `helo' (4 bytes)
+Response = `helo'
+  - response does match original query
+  - round trip time is 0.150219 ms
+
+  second client
+  Input> lol
+Sending string `lol' (3 bytes)
+Response = `lol'
+  - response does match original query
+  - round trip time is 3846.140834 ms
+second needs to wait so RTT is going until client 1 terminates
+
+*/
+
 //--//////////////////////////////////////////////////////////////////////////
 //--    configurables       ///{{{1///////////////////////////////////////////
 
