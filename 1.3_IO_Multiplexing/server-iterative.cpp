@@ -44,7 +44,7 @@
 // no blocking operations other than select() should occur. (If an blocking
 // operation is attempted, a EAGAIN or EWOULDBLOCK error is raised, probably
 // indicating a bug in the code!)
-#define NONBLOCKING 0
+#define NONBLOCKING 1
 
 
 // Default port of the server. May be overridden by specifying a different
