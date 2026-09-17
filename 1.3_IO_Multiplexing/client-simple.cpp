@@ -10,7 +10,7 @@
  * Build the client using e.g.
  * 		$ g++ -Wall -Wextra -o client-simple client-simple.cpp
  *
- * If MEASURE_ROUND_TRIP_TIME is enabled (=1), the program may need to be 
+ * If MEASURE_ROUND_TRIP_TIME is enabled (=1), the program may need to be
  * linked against additional libraries. On linux this is librt (-lrt):
  * 		$ g++ -Wall -Wextra -o client-simple client-simple.cpp -lrt
  *
@@ -37,17 +37,17 @@
 //--//////////////////////////////////////////////////////////////////////////
 //--    configurables       ///{{{1///////////////////////////////////////////
 
-// Set VERBOSE to 0 to suppress non-essential output. 
+// Set VERBOSE to 0 to suppress non-essential output.
 #define VERBOSE 1
 
 // Verify that the message received from the server is equal to the one
 // the client sends.
 #define VERIFY_MESSAGE 1
 
-// Measure round trip time. 
-#define MEASURE_ROUND_TRIP_TIME 0
+// Measure round trip time.
+#define MEASURE_ROUND_TRIP_TIME 1
 
-// Size of the input buffer. This also corresponds to the largest single 
+// Size of the input buffer. This also corresponds to the largest single
 // query the client can send.
 const size_t kInputBufferSize = 256;
 
@@ -81,8 +81,8 @@ int main( int argc, char* argv[] )
 	// get program arguments (server address and port)
 	if( argc != 3 )
 	{
-		fprintf( stderr, "Error %s arguments\n", 
-			argc < 3 ? "insufficient":"too many" 
+		fprintf( stderr, "Error %s arguments\n",
+			argc < 3 ? "insufficient":"too many"
 		);
 		fprintf( stderr, "  usage: %s <server> <port>\n", argv[0] );
 		return 1;
@@ -132,8 +132,8 @@ int main( int argc, char* argv[] )
 		while( remaining > 0 )
 		{
 			ssize_t offset = inputLength - remaining;
-			ssize_t ret = send( connfd, 
-				inputBuffer+offset, 
+			ssize_t ret = send( connfd,
+				inputBuffer+offset,
 				remaining,
 				MSG_NOSIGNAL
 			);
@@ -186,7 +186,7 @@ int main( int argc, char* argv[] )
 		// print output to screen
 		printf( "Response = `%s'\n", recvBuffer );
 #		if VERIFY_MESSAGE
-		bool match = 0 == strncmp( inputBuffer, recvBuffer, 
+		bool match = 0 == strncmp( inputBuffer, recvBuffer,
 			std::min( kInputBufferSize, kReceiveBufferSize )
 		);
 
@@ -223,20 +223,20 @@ static int connect_to_server( const char* addr, const char* port )
 
 		addrinfo* result = 0;
 		int ret = getaddrinfo( addr, port, &hints, &result );
-		
+
 		if( 0 != ret )
 		{
 			fprintf( stderr, "Error - cannot resolve address: %s\n",
-				gai_strerror(ret) 
+				gai_strerror(ret)
 			);
 
 			return -1;
 		}
-		
+
 		bool ok = false;
 		for( addrinfo* res = result; res; res = res->ai_next )
 		{
-			if( res->ai_family == AF_INET 
+			if( res->ai_family == AF_INET
 				&& res->ai_addrlen == sizeof(sockaddr_in) )
 			{
 				ok = true;
@@ -256,7 +256,7 @@ static int connect_to_server( const char* addr, const char* port )
 
 	// allocate socket
 	int fd = socket( AF_INET, SOCK_STREAM, 0 );
-	
+
 	if( -1 == fd )
 	{
 		perror( "socket() failed" );
@@ -281,7 +281,7 @@ static int connect_to_server( const char* addr, const char* port )
  * time on different platforms.
  */
 
-/* Note: timer code implementations are provided for Linux, Mac OS X and 
+/* Note: timer code implementations are provided for Linux, Mac OS X and
  * Windows. If you're running this on a different platform, you'll probably
  * have to write your own code.
  *
@@ -303,7 +303,7 @@ static double get_time_stamp()
 	timespec currentTime;
 	clock_gettime( CLOCK_REALTIME, &currentTime );
 
-	return (currentTime.tv_sec - initTime.tv_sec) + 
+	return (currentTime.tv_sec - initTime.tv_sec) +
 		1e-9*(currentTime.tv_nsec - initTime.tv_nsec);
 }
 
@@ -352,4 +352,4 @@ static double get_time_stamp()
 #	endif // platform
 #endif // MEASURE_ROUND_TRIP_TIME
 
-//--///}}}1//////////////// vim:syntax=cpp:foldmethod=marker:ts=4:noexpandtab: 
+//--///}}}1//////////////// vim:syntax=cpp:foldmethod=marker:ts=4:noexpandtab:
