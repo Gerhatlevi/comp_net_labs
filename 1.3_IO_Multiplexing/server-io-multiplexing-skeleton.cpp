@@ -2,11 +2,11 @@
 /* I/O multiplexing server with concurrent connections.
  *
  * This is just a skeleton code, to help you design your solution.
- * Search for: 
- * 1) NOTEs: describing important aspects of the design that you should 
+ * Search for:
+ * 1) NOTEs: describing important aspects of the design that you should
  *	be aware of to help you towards your solution.
- * 2) TODOs: that are the main points where you need to add code. 
- * 
+ * 2) TODOs: that are the main points where you need to add code.
+ *
  */
 /******************************************************************* -}}}1- */
 
@@ -51,7 +51,7 @@ const int kServerPort = 5703;
 // The implementation may choose a different value, or ignore it altogether.
 const int kServerBacklog = 8;
 
-// Size of the buffer used to transfer data. A single read from the socket 
+// Size of the buffer used to transfer data. A single read from the socket
 // may return at most this much data, and consequently, a single send may
 // send at most this much data.
 const size_t kTransferBufferSize = 64;
@@ -59,7 +59,7 @@ const size_t kTransferBufferSize = 64;
 //--    constants           ///{{{1///////////////////////////////////////////
 
 /* Connection states.
- * A connection may either expect to receive data, or require data to be 
+ * A connection may either expect to receive data, or require data to be
  * sent.
  */
 enum EConnState
@@ -71,7 +71,7 @@ enum EConnState
 //--    structures          ///{{{1///////////////////////////////////////////
 
 /* Per-connection data
- * In the iterative server, there is a single instance of this structure, 
+ * In the iterative server, there is a single instance of this structure,
  * holding data for the currently active connection. A concurrent server will
  * need an instance for each active connection.
  */
@@ -82,7 +82,7 @@ struct ConnectionData
 	int sock; // file descriptor of the connections socket.
 
 	// items related to buffering.
-	size_t bufferOffset, bufferSize; 
+	size_t bufferOffset, bufferSize;
 	char buffer[kTransferBufferSize+1];
 };
 
@@ -90,10 +90,10 @@ struct ConnectionData
 
 /* Receive data and place it in the connection's buffer.
  *
- * Requires that ConnectionData::state is eConnStateReceiving; if not, an 
- * assertation fault is generated. 
+ * Requires that ConnectionData::state is eConnStateReceiving; if not, an
+ * assertation fault is generated.
  *
- * If _any_ data is received, the connection's state is transitioned to 
+ * If _any_ data is received, the connection's state is transitioned to
  * eConnStateSending.
  *
  * Returns `true' if the connection remains open and further processing is
@@ -104,10 +104,10 @@ static bool process_client_recv( ConnectionData& cd );
 
 /* Send data from the connection's buffer.
  *
- * Requires that ConnectionData::state is eConnStateSending; if not, an 
+ * Requires that ConnectionData::state is eConnStateSending; if not, an
  * asseration fault is generated.
  *
- * When all data is sent, the connection's state is transitioned to 
+ * When all data is sent, the connection's state is transitioned to
  * eConnStateReceiving. If data remains in the buffer, no state-transition
  * occurs.
  *
@@ -123,13 +123,13 @@ static bool process_client_send( ConnectionData& cd );
  */
 static bool set_socket_nonblocking( int fd );
 
-/* Returns `true' if the connection `cd' has an invalid socket (-1), and 
+/* Returns `true' if the connection `cd' has an invalid socket (-1), and
  * `false' otherwise.
  */
 static bool is_invalid_connection( const ConnectionData& cd );
 
 
-/* Sets up a listening socket on `port'. 
+/* Sets up a listening socket on `port'.
  *
  * Returns, if successful, the new socket fd. On error, -1 is returned.
  */
@@ -157,37 +157,46 @@ int main( int argc, char* argv[] )
 		return 1;
 
 
-	// TODO: declare a data structure that will keep track of one ConnectionData 
-	// struct for each open connection. E.g. you can use a vector (see Appendix E 
+	// declare a data structure that will keep track of one ConnectionData
+	// struct for each open connection. E.g. you can use a vector (see Appendix E
 	// on the lab manual).
-
+	std::vector<ConnectionData> connections;
 
 	// loop forever
 	while( 1 )
 	{
-
 		fd_set readfds, writefds;
 
 		FD_ZERO( &readfds );
 		FD_ZERO( &writefds );
 
+		// add listenfd to readfds.
+		FD_SET(listenfd, &readfds);
 
-		// TODO: add listenfd to readfds.
-		// NOTE: check for FD_SET() in the man page of select().
-
-		// TODO: loop through all open connections (which you have stored in data structre, e.g. a vector) 
+		// loop through all open connections (which you have stored in data structre, e.g. a vector)
 		// and add them in readfds or writefds.
-		// NOTE: How to know if a socket should be added in readfds or writefds? Check the "state"
+		// How to know if a socket should be added in readfds or writefds? Check the "state"
 		// field of ConnectionData for that socket.
+		int max_fd = listenfd;
+		for( size_t i = 0; i < connections.size(); ++i ){
+		    int conn_fd = connections[i].sock;
+		    if (conn_fd > max_fd)
+				max_fd = conn_fd;
+			switch(connections[i].state) {
+			    case eConnStateReceiving:
+					FD_SET(conn_fd, &readfds);
+					break;
+           	    case eConnStateSending:
+         			FD_SET(conn_fd, &writefds);
+                    break;
+			}
+		}
 
-		
-		
 		// wait for an event using select()
 		// NOTE 1: we only need one call to select() throughout our program.
-		// NOTE 2: pay attention to the first arguement of select. It should be the 
+		// NOTE 2: pay attention to the first argument of select. It should be the
 		// maximum VALUE of all tracked file descriptors + 1.
-		int ret = select( arg1, arg2, arg3, 0, 0 );
-		
+		int ret = select(max_fd + 1, &readfds, &writefds, 0, 0);
 
 		if( -1 == ret )
 		{
@@ -196,9 +205,9 @@ int main( int argc, char* argv[] )
 		}
 
 
-		// NOTE: if listenfd is in the readfds set after the return of select(), 
-		// it means we have a new incomming connection, which we need to serve, just as we did in Lab 1.2. 
-		if( FD_ISSET(listenfd, &readfds) )
+		// NOTE: if listenfd is in the readfds set after the return of select(),
+		// it means we have a new incomming connection, which we need to serve, just as we did in Lab 1.2.
+		if(FD_ISSET(listenfd, &readfds))
 		{
 			sockaddr_in clientAddr;
 			socklen_t addrSize = sizeof(clientAddr);
@@ -236,18 +245,35 @@ int main( int argc, char* argv[] )
 			connData.sock = clientfd;
 			connData.state = eConnStateReceiving;
 
-
-			// TODO: add connData in your data structure so that you can keep track of that socket.
+			// add connData in your data structure so that you can keep track of that socket.
+			connections.push_back( connData );
 		}
 
-		// TODO: loop through your open sockets.
-		// For each socket: 
-		// 1) Use FD_ISSET to check if the socket is in the readfds or the writefds set, after the return of select(). 
+		// loop through your open sockets.
+		// For each socket:
+		// 1) Use FD_ISSET to check if the socket is in the readfds or the writefds set, after the return of select().
 		// 2) If it is in the readfds set, receive data from that socket, using process_client_recv().
 		// 3) If it is in the writefds set, write send to that socket, using process_client_send().
 		// 4) Close and remove sockets if their connection was terminated.
+		for( size_t i = 0; i < connections.size(); ++i ){
+		    bool keepAlive = true;
+		    if (FD_ISSET(connections[i].sock, &readfds)){
+				keepAlive = process_client_recv(connections[i]);
+			}
+		    else if (connections[i].state == eConnStateSending && FD_ISSET(connections[i].sock, &writefds)){
+				keepAlive = process_client_send(connections[i]);
+		    }
+			if (!keepAlive) {
+			    close(connections[i].sock);
+			    connections[i].sock = -1;
+			}
+		}
 
-
+		// clear all sockets that are invalid
+		connections.erase(
+		    std::remove_if(connections.begin(), connections.end(), &is_invalid_connection),
+			connections.end()
+		);
 	}
 
 	// The program will never reach this part, but for demonstration purposes,
@@ -304,8 +330,8 @@ static bool process_client_send( ConnectionData& cd )
 	assert( cd.state == eConnStateSending );
 
 	// send as much data as possible from buffer
-	ssize_t ret = send( cd.sock, 
-		cd.buffer+cd.bufferOffset, 
+	ssize_t ret = send( cd.sock,
+		cd.buffer+cd.bufferOffset,
 		cd.bufferSize-cd.bufferOffset,
 		MSG_NOSIGNAL // suppress SIGPIPE signals, generate EPIPE instead
 	);
@@ -313,7 +339,7 @@ static bool process_client_send( ConnectionData& cd )
 	if( -1 == ret )
 	{
 #		if VERBOSE
-		printf( "  socket %d - error on send: '%s'\n", cd.sock, 
+		printf( "  socket %d - error on send: '%s'\n", cd.sock,
 			strerror(errno) );
 		fflush( stdout );
 #		endif
@@ -348,7 +374,7 @@ static int setup_server_socket( short port )
 	}
 
 	// bind socket to local address
-	sockaddr_in servAddr; 
+	sockaddr_in servAddr;
 	memset( &servAddr, 0, sizeof(servAddr) );
 
 	servAddr.sin_family = AF_INET;
@@ -375,7 +401,7 @@ static int setup_server_socket( short port )
 	}
 
 	char actualBuff[128];
-	printf( "Socket is bound to %s %d\n", 
+	printf( "Socket is bound to %s %d\n",
 		inet_ntop( AF_INET, &actualAddr.sin_addr, actualBuff, sizeof(actualBuff) ),
 		ntohs(actualAddr.sin_port)
 	);
@@ -434,4 +460,4 @@ static bool is_invalid_connection( const ConnectionData& cd )
 	return cd.sock == -1;
 }
 
-//--///}}}1//////////////// vim:syntax=cpp:foldmethod=marker:ts=4:noexpandtab: 
+//--///}}}1//////////////// vim:syntax=cpp:foldmethod=marker:ts=4:noexpandtab:
