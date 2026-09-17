@@ -1,30 +1,30 @@
 /*********************************************************** -- HEAD -{{{1- */
 /* Multi-Client Emulator for Network API Lab in Internet Technology 2012.
-*/
+ */
 /******************************************************************* -}}}1- */
 
 #include <stdio.h>
 #include <stdlib.h>
 
-#include <fcntl.h>
 #include <errno.h>
+#include <fcntl.h>
 #include <netdb.h>
 #include <string.h>
 #include <unistd.h>
 
-#include <sys/types.h>
 #include <sys/socket.h>
+#include <sys/types.h>
 
 #include <netinet/in.h>
 #include <netinet/tcp.h>
 
-#include <limits>
 #include <algorithm>
+#include <limits>
 
 //--//////////////////////////////////////////////////////////////////////////
 //--    configurables       ///{{{1///////////////////////////////////////////
 
-// Set VERBOSE to 0 to suppress non-essential output. 
+// Set VERBOSE to 0 to suppress non-essential output.
 #define VERBOSE 0
 
 // Verify that the message received from the server is equal to the one
@@ -34,7 +34,7 @@
 // Measure time taken to establish a connection
 #define MEASURE_CONNECT_TIME 1
 
-// Measure round trip time. 
+// Measure round trip time.
 #define MEASURE_ROUND_TRIP_TIME 1
 
 // Set TCPNODELAY in connect_to_server()
@@ -47,74 +47,73 @@ const size_t kConnectionBufferSize = 256;
 
 //--    constants           ///{{{1///////////////////////////////////////////
 
-/* Connection States. 
+/* Connection States.
  */
-enum EConnState
-{
-	eConnStateConnecting, // async connect() issued, but not yet done
-	eConnStateSending, // connect() finished, ready to send data
-	eConnStateReceiving, // send() finished, ready to receive response
-	eConnStateDead // done (either due to error or completion)
+enum EConnState {
+  eConnStateConnecting, // async connect() issued, but not yet done
+  eConnStateSending,    // connect() finished, ready to send data
+  eConnStateReceiving,  // send() finished, ready to receive response
+  eConnStateDead        // done (either due to error or completion)
 };
 
 //--    structures          ///{{{1///////////////////////////////////////////
 
 /* Per-connection data
  */
-struct ConnectionData
-{
-	EConnState state; 
+struct ConnectionData {
+  EConnState state;
 
-	// socket fd
-	int sock;
+  // socket fd
+  int sock;
 
-	// expected response size
-	size_t expectedSize;
+  // expected response size
+  size_t expectedSize;
 
-	// transfer buffer; used for both sending and receiving
-	size_t bufferOffset, bufferSize;
-	char buffer[kConnectionBufferSize+1];
+  // transfer buffer; used for both sending and receiving
+  size_t bufferOffset, bufferSize;
+  char buffer[kConnectionBufferSize + 1];
 
-	// aux. data
-	size_t repeatsLeft;
-	//double timeout;
+  // aux. data
+  size_t repeatsLeft;
+  // double timeout;
 
-	// per-connection measurements
-#	if MEASURE_CONNECT_TIME
-	double connectStart, connectEnd;
-#	endif
-#	if MEASURE_ROUND_TRIP_TIME
-	double roundTripStart, roundTripEnd;
-#	endif
+  // per-connection measurements
+#if MEASURE_CONNECT_TIME
+  double connectStart, connectEnd;
+#endif
+#if MEASURE_ROUND_TRIP_TIME
+  double roundTripStart, roundTripEnd;
+#endif
 };
 
 //--    global state        ///{{{1///////////////////////////////////////////
 
-// Message sent by client. 
-static const char* g_clientMessage = "client%d";
+// Message sent by client.
+static const char *g_clientMessage = "client%d";
 
 //--    prototypes          ///{{{1///////////////////////////////////////////
 
 /* Process client that is ready for writing.
  */
-static bool client_process_send( size_t cid, ConnectionData& cd );
+static bool client_process_send(size_t cid, ConnectionData &cd);
 /* Process client that is ready for sending.
  */
-static bool client_process_recv( size_t cid, ConnectionData& cd );
+static bool client_process_recv(size_t cid, ConnectionData &cd);
 
 /* Resolves/parses address given by `host' and `port', and initializes the
  * IPv4 address `sa' with this data.
  *
  * Returns true/false to indicate success/failure.
  */
-static bool resolve_address( sockaddr_in& sa, const char* host, const char* port );
+static bool resolve_address(sockaddr_in &sa, const char *host,
+                            const char *port);
 
-/* Initiates connection to the address specified in `sa'. The socket is put 
+/* Initiates connection to the address specified in `sa'. The socket is put
  * into non-blocking mode before the call to connect() - to use the connection,
  * wait until the socket is ready for writing and then retrieve the status with
  * getsockopt() / SO_ERROR.
  */
-static int connect_to_server_nonblock( const sockaddr_in& sa );
+static int connect_to_server_nonblock(const sockaddr_in &sa);
 
 #if MEASURE_ROUND_TRIP_TIME || MEASURE_CONNECT_TIME
 /* Initialize timer resources. Should be called once before the first call
@@ -128,521 +127,603 @@ static double get_time_stamp();
 #endif
 
 //--    main()              ///{{{1///////////////////////////////////////////
+// I.d.1
+// Simulating 7 clients.
+// Establishing 7 connections...
+//   successfully initiated 7 connection attempts!
+// Connect timing results for 7 successful connections
+// - min time: 3.445166 ms
+// - max time: 4.975125 ms
+// - average time: 4.533768 ms
+// (0 connections failed!)
+// Roundtrip timing results for 7 connections for 255 round trips
+// - min time: 879.843833 ms
+// - max time: 6066.807791 ms
+// - average time: 3481.720559 ms
+//
+// 10 clients:
+//
+// Simulating 10 clients.
+// Establishing 10 connections...
+//   successfully initiated 10 connection attempts!
+// Connect timing results for 10 successful connections
+//   - min time: 3.740458 ms
+//   - max time: 9.805125 ms
+//   - average time: 7.933429 ms
+//  (0 connections failed!)
+// Roundtrip timing results for 10 connections for 255 round trips
+//   - min time: 877.206667 ms
+//   - max time: 8856.188042 ms
+//   - average time: 4863.505609 ms
+//
+// 15 clients:
+// Simulating 15 clients.
+// Establishing 15 connections...
+//   successfully initiated 15 connection attempts!
+// Connect timing results for 15 successful connections
+//   - min time: 6.780250 ms
+//   - max time: 11.509708 ms
+//   - average time: 10.169614 ms
+//  (0 connections failed!)
+// Roundtrip timing results for 15 connections for 255 round trips
+//   - min time: 881.021541 ms
+//   - max time: 13430.446833 ms
+//   - average time: 7163.452028 ms
+//
+// 30 clients:
+// Simulating 30 clients.
+// Establishing 30 connections...
+//   successfully initiated 30 connection attempts!
+//   - conn 14 : error in recv() : Operation timed out
+//   - conn 5 : error in recv() : Operation timed out
+//   - conn 12 : error in recv() : Operation timed out
+// Connect timing results for 30 successful connections
+//   - min time: 5.264875 ms
+//   - max time: 11.589041 ms
+//   - average time: 9.460636 ms
+//  (0 connections failed!)
+// Roundtrip timing results for 27 connections for 255 round trips
+//   - min time: 886.015541 ms
+//   - max time: 24157.017125 ms
+//   - average time: 12504.484904 ms
+//
+// 50 clients:
+// Simulating 50 clients.
+// Establishing 50 connections...
+//   successfully initiated 50 connection attempts!
+//   - conn 48 : error in recv() : Connection reset by peer
+//   - conn 40 : error in recv() : Connection reset by peer
+//   - conn 13 : error in recv() : Connection reset by peer
+// Connect timing results for 50 successful connections
+//   - min time: 7.441333 ms
+//   - max time: 3946.722292 ms
+//   - average time: 1833.354812 ms
+//  (0 connections failed!)
+// Roundtrip timing results for 47 connections for 255 round trips
+//   - min time: 897.857000 ms
+//   - max time: 66846.910625 ms
+//   - average time: 22783.532592 ms
+//
+// 100 clients:
+// Connect timing results for 100 successful connections
+//   - min time: 4.244959 ms
+//   - max time: 2024.027666 ms
+//   - average time: 489.977860 ms
+//  (0 connections failed!)
+// Roundtrip timing results for 46 connections for 255 round trips
+//   - min time: 882.891833 ms
+//   - max time: 69470.643750 ms
+//   - average time: 25402.771049 ms
+//
+// 7 connections 1000 messages:
+// Connect timing results for 7 successful connections
+//   - min time: 5.605958 ms
+//   - max time: 9.531041 ms
+//   - average time: 8.196018 ms
+//  (0 connections failed!)
+// Roundtrip timing results for 7 connections for 1000 round trips
+//   - min time: 3531.179291 ms
+//   - max time: 23963.848250 ms
+//   - average time: 13801.586732 ms
+//
+// 7 connections 5000 messages:
+// Connect timing results for 7 successful connections
+//   - min time: 7.228167 ms
+//   - max time: 10.025833 ms
+//   - average time: 9.395309 ms
+//  (0 connections failed!)
+// Roundtrip timing results for 7 connections for 5000 round trips
+//   - min time: 17125.052250 ms
+//   - max time: 119595.409750 ms
+//   - average time: 68518.959268 ms
+//
+// 7 connections 10000 messages:
+// Connect timing results for 7 successful connections
+//   - min time: 5.998000 ms
+//   - max time: 8.835583 ms
+//   - average time: 8.090030 ms
+//  (0 connections failed!)
+// Roundtrip timing results for 7 connections for 10000 round trips
+//   - min time: 34631.591042 ms
+//   - max time: 240851.838667 ms
+//   - average time: 137956.581714 ms
+//
+// 100 clients 10000 messages:
+// Connect timing results for 57 successful connections
+//   - min time: 6.517750 ms
+//   - max time: 10.373208 ms
+//   - average time: 8.405599 ms
+//  (43 connections failed!)
+// Roundtrip timing results for 10 connections for 10000 round trips
+//   - min time: 34608.952083 ms
+//   - max time: 345859.080250 ms
+//   - average time: 190307.681908 ms
+//
+// I.d.3 took 8.15 seconds for connections to start timing out
 int main( int argc, char* argv[] )
 {
-	size_t numClients = 1;
-	size_t numRepeats = 1;
+  size_t numClients = 1;
+  size_t numRepeats = 1;
 
-	const char* serverPort = 0;
-	const char* serverAddress = 0;
+  const char *serverPort = 0;
+  const char *serverAddress = 0;
 
-	// get program arguments (server address and port)
-	if( argc < 4 || argc > 6 )
-	{
-		fprintf( stderr, "Error %s arguments\n", 
-			argc < 4 ? "insufficient":"too many" 
-		);
-		fprintf( stderr, "  synopsis: %s <server> <port> <#num> [<#rep>] [<msg>]\n", 
-			argv[0] 
-		);
-		fprintf( stderr, "    - <#num> -- number of clients to be emulated\n" );
-		fprintf( stderr, "    - <#rep> -- number of times message is sent\n" );
-		fprintf( stderr, "    - <msg> -- message sent by clients (see below)\n" );
-		fprintf( stderr, "\n" );
-		fprintf( stderr, "If the client message includes a `%%d' place holder, it\n" );
-		fprintf( stderr, "is replaced by an unique client id (0 < cid < #clients)\n" );
-		fprintf( stderr, "before the message is sent to the server.\n" );
-		fprintf( stderr, "The default message is `%s'\n", g_clientMessage );
-		return 1;
-	}
+  // get program arguments (server address and port)
+  if (argc < 4 || argc > 6) {
+    fprintf(stderr, "Error %s arguments\n",
+            argc < 4 ? "insufficient" : "too many");
+    fprintf(stderr, "  synopsis: %s <server> <port> <#num> [<#rep>] [<msg>]\n",
+            argv[0]);
+    fprintf(stderr, "    - <#num> -- number of clients to be emulated\n");
+    fprintf(stderr, "    - <#rep> -- number of times message is sent\n");
+    fprintf(stderr, "    - <msg> -- message sent by clients (see below)\n");
+    fprintf(stderr, "\n");
+    fprintf(stderr,
+            "If the client message includes a `%%d' place holder, it\n");
+    fprintf(stderr,
+            "is replaced by an unique client id (0 < cid < #clients)\n");
+    fprintf(stderr, "before the message is sent to the server.\n");
+    fprintf(stderr, "The default message is `%s'\n", g_clientMessage);
+    return 1;
+  }
 
-	serverPort = argv[2];
-	serverAddress = argv[1];
+  serverPort = argv[2];
+  serverAddress = argv[1];
 
-	numClients = atol(argv[3]);
+  numClients = atol(argv[3]);
 
-	if( argc >= 5 ) numRepeats = atol(argv[4]);
-	if( argc >= 6 ) g_clientMessage = argv[5];
+  if (argc >= 5)
+    numRepeats = atol(argv[4]);
+  if (argc >= 6)
+    g_clientMessage = argv[5];
 
-	// print short status
-	printf( "Simulating %zu clients.\n", numClients );
+  // print short status
+  printf("Simulating %zu clients.\n", numClients);
 
-	// initialize timer(s)
-#	if MEASURE_ROUND_TRIP_TIME
-	initialize_timer();
-#	endif
+  // initialize timer(s)
+#if MEASURE_ROUND_TRIP_TIME
+  initialize_timer();
+#endif
 
-	// resolve address of server once
-	sockaddr_in servAddr;
-	if( !resolve_address( servAddr, serverAddress, serverPort ) )
-		return 1;
+  // resolve address of server once
+  sockaddr_in servAddr;
+  if (!resolve_address(servAddr, serverAddress, serverPort))
+    return 1;
 
-	// establish N connections (async)
-	printf( "Establishing %zu connections... \n", numClients );
+  // establish N connections (async)
+  printf("Establishing %zu connections... \n", numClients);
 
-	size_t connErrors = 0;
-	ConnectionData* connections = new ConnectionData[numClients];
+  size_t connErrors = 0;
+  ConnectionData *connections = new ConnectionData[numClients];
 
-	for( size_t i = 0; i < numClients; ++i )
-	{
-#		if MEASURE_CONNECT_TIME
-		connections[i].connectEnd = connections[i].connectStart = -1.0;
-		connections[i].connectStart = get_time_stamp();
-#		endif
+  for (size_t i = 0; i < numClients; ++i) {
+#if MEASURE_CONNECT_TIME
+    connections[i].connectEnd = connections[i].connectStart = -1.0;
+    connections[i].connectStart = get_time_stamp();
+#endif
 
-		connections[i].sock = connect_to_server_nonblock( servAddr );
-		connections[i].state = eConnStateConnecting;
+    connections[i].sock = connect_to_server_nonblock(servAddr);
+    connections[i].state = eConnStateConnecting;
 
-		// initialize client aux. data
-		connections[i].repeatsLeft = numRepeats-1;
-	
-#		if MEASURE_ROUND_TRIP_TIME
-		connections[i].roundTripEnd = connections[i].roundTripStart = -1.0;
-#		endif
+    // initialize client aux. data
+    connections[i].repeatsLeft = numRepeats - 1;
 
-		// on error: mark client as dead
-		if( -1 == connections[i].sock )
-		{
-			connections[i].state = eConnStateDead;
-			++connErrors;
-		}
-	}
+#if MEASURE_ROUND_TRIP_TIME
+    connections[i].roundTripEnd = connections[i].roundTripStart = -1.0;
+#endif
 
-	if( connErrors > 0 )
-	{
-		printf( "  %zu errors while establishing connections\n", connErrors );
+    // on error: mark client as dead
+    if (-1 == connections[i].sock) {
+      connections[i].state = eConnStateDead;
+      ++connErrors;
+    }
+  }
 
-		if( connErrors == numClients )
-		{
-			printf( "All clients errored. Bye\n" );
-			return 1;
-		}
-	}
+  if (connErrors > 0) {
+    printf("  %zu errors while establishing connections\n", connErrors);
 
-	printf( "  successfully initiated %zu connection attempts!\n", 
-		numClients-connErrors );
+    if (connErrors == numClients) {
+      printf("All clients errored. Bye\n");
+      return 1;
+    }
+  }
 
-	// event handling loop
-	size_t clientsAlive = numClients - connErrors;
+  printf("  successfully initiated %zu connection attempts!\n",
+         numClients - connErrors);
 
-	while( clientsAlive > 0 )
-	{
-		int maxfd = 0;
-		fd_set rset, wset;
+  // event handling loop
+  size_t clientsAlive = numClients - connErrors;
 
-		FD_ZERO( &rset ); 
-		FD_ZERO( &wset );
+  while (clientsAlive > 0) {
+    int maxfd = 0;
+    fd_set rset, wset;
 
-		// put active clients into their respective sets
-		for( size_t i = 0; i < numClients; ++i )
-		{
-			switch( connections[i].state )
-			{
-				case eConnStateSending:
-				case eConnStateConnecting:
-					FD_SET( connections[i].sock, &wset );
-					break;
+    FD_ZERO(&rset);
+    FD_ZERO(&wset);
 
-				case eConnStateReceiving:
-					FD_SET( connections[i].sock, &rset );
-					break;
+    // put active clients into their respective sets
+    for (size_t i = 0; i < numClients; ++i) {
+      switch (connections[i].state) {
+      case eConnStateSending:
+      case eConnStateConnecting:
+        FD_SET(connections[i].sock, &wset);
+        break;
 
-				case eConnStateDead: break;
-			}
+      case eConnStateReceiving:
+        FD_SET(connections[i].sock, &rset);
+        break;
 
-			maxfd = std::max( connections[i].sock, maxfd );
-		}
+      case eConnStateDead:
+        break;
+      }
 
-		// wait for any event
-		int ret = select( maxfd+1, &rset, &wset, 0, 0 );
+      maxfd = std::max(connections[i].sock, maxfd);
+    }
 
-		if( 0 == ret )
-		{
-			continue;
-		}
+    // wait for any event
+    int ret = select(maxfd + 1, &rset, &wset, 0, 0);
 
-		if( -1 == ret )
-		{
-			perror( "select()" );
-			return 1;
-		}
+    if (0 == ret) {
+      continue;
+    }
 
-		// handle events
-		size_t finishedClients = 0;
+    if (-1 == ret) {
+      perror("select()");
+      return 1;
+    }
 
-		for( size_t i = 0; i < numClients; ++i )
-		{
-			if( connections[i].state == eConnStateDead ) continue;
+    // handle events
+    size_t finishedClients = 0;
 
-			bool keep = true;
-			if( FD_ISSET( connections[i].sock, &wset ) )
-			{
-				keep = client_process_send( i, connections[i] );
-			}
-			else if( FD_ISSET( connections[i].sock, &rset ) )
-			{
-				keep = client_process_recv( i, connections[i] );
-			}
+    for (size_t i = 0; i < numClients; ++i) {
+      if (connections[i].state == eConnStateDead)
+        continue;
 
-			if( !keep )
-			{
-				close( connections[i].sock );
+      bool keep = true;
+      if (FD_ISSET(connections[i].sock, &wset)) {
+        keep = client_process_send(i, connections[i]);
+      } else if (FD_ISSET(connections[i].sock, &rset)) {
+        keep = client_process_recv(i, connections[i]);
+      }
 
-				connections[i].sock = -1;
-				connections[i].state = eConnStateDead;
+      if (!keep) {
+        close(connections[i].sock);
 
-				++finishedClients;
-			}
-		}
+        connections[i].sock = -1;
+        connections[i].state = eConnStateDead;
 
-		clientsAlive -= finishedClients;
-	}
+        ++finishedClients;
+      }
+    }
 
-	// gather and display some statistics
-#	if MEASURE_CONNECT_TIME
-	{
-		double avgTime = 0.0;
-		double maxTime = 0.0;
-		double minTime = std::numeric_limits<double>::infinity();
-		size_t timedItems = 0, erroredItems = 0;
+    clientsAlive -= finishedClients;
+  }
 
-		for( size_t i = 0; i < numClients; ++i )
-		{
-			if( connections[i].connectEnd < 0.0 )
-			{
-				++erroredItems;
-				continue;
-			}
-			
-			double delta = connections[i].connectEnd - connections[i].connectStart;
+  // gather and display some statistics
+#if MEASURE_CONNECT_TIME
+  {
+    double avgTime = 0.0;
+    double maxTime = 0.0;
+    double minTime = std::numeric_limits<double>::infinity();
+    size_t timedItems = 0, erroredItems = 0;
 
-			minTime = std::min( delta, minTime );
-			maxTime = std::max( delta, maxTime );
-			avgTime += delta;
-			++timedItems;
+    for (size_t i = 0; i < numClients; ++i) {
+      if (connections[i].connectEnd < 0.0) {
+        ++erroredItems;
+        continue;
+      }
 
-#		if VERBOSE
-			printf( "  - conn %zu : connect time = %f ms\n", 
-				i, delta*1e3 );
-#		endif
-		}
+      double delta = connections[i].connectEnd - connections[i].connectStart;
 
-		avgTime /= timedItems;
+      minTime = std::min(delta, minTime);
+      maxTime = std::max(delta, maxTime);
+      avgTime += delta;
+      ++timedItems;
 
-		printf( "Connect timing results for %zu successful connections\n",
-			timedItems );
-		printf( "  - min time: %f ms\n", minTime*1e3 );
-		printf( "  - max time: %f ms\n", maxTime*1e3 );
-		printf( "  - average time: %f ms\n", avgTime*1e3 );
-		printf( " (%zu connections failed!)\n", erroredItems );
-	}
-#	endif
-#	if MEASURE_ROUND_TRIP_TIME
-	{
-		double avgTime = 0.0;
-		double maxTime = 0.0;
-		double minTime = std::numeric_limits<double>::infinity();
-		size_t timedItems = 0;
+#if VERBOSE
+      printf("  - conn %zu : connect time = %f ms\n", i, delta * 1e3);
+#endif
+    }
 
-		for( size_t i = 0; i < numClients; ++i )
-		{
-			if( connections[i].roundTripEnd < 0.0 ) continue;
-			
-			double delta = connections[i].roundTripEnd - connections[i].roundTripStart;
+    avgTime /= timedItems;
 
-			minTime = std::min( delta, minTime );
-			maxTime = std::max( delta, maxTime );
-			avgTime += delta;
-			++timedItems;
+    printf("Connect timing results for %zu successful connections\n",
+           timedItems);
+    printf("  - min time: %f ms\n", minTime * 1e3);
+    printf("  - max time: %f ms\n", maxTime * 1e3);
+    printf("  - average time: %f ms\n", avgTime * 1e3);
+    printf(" (%zu connections failed!)\n", erroredItems);
+  }
+#endif
+#if MEASURE_ROUND_TRIP_TIME
+  {
+    double avgTime = 0.0;
+    double maxTime = 0.0;
+    double minTime = std::numeric_limits<double>::infinity();
+    size_t timedItems = 0;
 
-#		if VERBOSE
-			printf( "  - conn %zu : round trip time = %f ms for %zu round trips\n", 
-				i, delta*1e3, numRepeats );
-#		endif
-		}
+    for (size_t i = 0; i < numClients; ++i) {
+      if (connections[i].roundTripEnd < 0.0)
+        continue;
 
-		avgTime /= timedItems;
+      double delta =
+          connections[i].roundTripEnd - connections[i].roundTripStart;
 
-		printf( "Roundtrip timing results for %zu connections for %zu round trips\n",
-			timedItems, numRepeats );
-		printf( "  - min time: %f ms\n", minTime*1e3 );
-		printf( "  - max time: %f ms\n", maxTime*1e3 );
-		printf( "  - average time: %f ms\n", avgTime*1e3 );
-	}
-#	endif
-	
-	// clean up
-	for( size_t i = 0; i < numClients; ++i )
-		close( connections[i].sock );
+      minTime = std::min(delta, minTime);
+      maxTime = std::max(delta, maxTime);
+      avgTime += delta;
+      ++timedItems;
 
-	delete [] connections;
-	
-	return 0;
+#if VERBOSE
+      printf("  - conn %zu : round trip time = %f ms for %zu round trips\n", i,
+             delta * 1e3, numRepeats);
+#endif
+    }
+
+    avgTime /= timedItems;
+
+    printf("Roundtrip timing results for %zu connections for %zu round trips\n",
+           timedItems, numRepeats);
+    printf("  - min time: %f ms\n", minTime * 1e3);
+    printf("  - max time: %f ms\n", maxTime * 1e3);
+    printf("  - average time: %f ms\n", avgTime * 1e3);
+  }
+#endif
+
+  // clean up
+  for (size_t i = 0; i < numClients; ++i)
+    close(connections[i].sock);
+
+  delete[] connections;
+
+  return 0;
 }
 
 //--    client_process_send()   ///{{{1///////////////////////////////////////
-static bool client_process_send( size_t cid, ConnectionData& cd )
-{
-#	if VERBOSE
-	printf( "  - conn %zu is read to send\n", cid );
-#	endif
+static bool client_process_send(size_t cid, ConnectionData &cd) {
+#if VERBOSE
+  printf("  - conn %zu is read to send\n", cid);
+#endif
 
-	if( cd.state == eConnStateConnecting )
-	{
-		// connection finished. check socket state/error
-		int error = 0;
-		socklen_t errlen = sizeof(error);
+  if (cd.state == eConnStateConnecting) {
+    // connection finished. check socket state/error
+    int error = 0;
+    socklen_t errlen = sizeof(error);
 
-		int ret = getsockopt( cd.sock, SOL_SOCKET, SO_ERROR, &error, &errlen );
+    int ret = getsockopt(cd.sock, SOL_SOCKET, SO_ERROR, &error, &errlen);
 
-		if( -1 == ret )
-		{
-			perror( "getsockopt(SO_ERROR)" );
-			return false;
-		}
+    if (-1 == ret) {
+      perror("getsockopt(SO_ERROR)");
+      return false;
+    }
 
-		if( 0 != error )
-		{
-			fprintf( stderr, "  - conn %zu : async connect() error: %s\n", 
-				cid, strerror(error)
-			);
-			return false;
-		}
+    if (0 != error) {
+      fprintf(stderr, "  - conn %zu : async connect() error: %s\n", cid,
+              strerror(error));
+      return false;
+    }
 
-#		if MEASURE_CONNECT_TIME
-		// record time when connection was established
-		cd.connectEnd = get_time_stamp();
-#		endif
+#if MEASURE_CONNECT_TIME
+    // record time when connection was established
+    cd.connectEnd = get_time_stamp();
+#endif
 
-		// construct message for client
-		cd.bufferOffset = 0;
-		snprintf( cd.buffer, kConnectionBufferSize, g_clientMessage, int(cid) );
+    // construct message for client
+    cd.bufferOffset = 0;
+    snprintf(cd.buffer, kConnectionBufferSize, g_clientMessage, int(cid));
 
-		cd.bufferSize = strlen(cd.buffer);
+    cd.bufferSize = strlen(cd.buffer);
 
-		// client is now sending stuff
-		cd.state = eConnStateSending;
+    // client is now sending stuff
+    cd.state = eConnStateSending;
 
-		// record starting time of send
-#		if MEASURE_ROUND_TRIP_TIME
-		cd.roundTripStart = get_time_stamp();
-#		endif
-	}
+    // record starting time of send
+#if MEASURE_ROUND_TRIP_TIME
+    cd.roundTripStart = get_time_stamp();
+#endif
+  }
 
-	// send as much data as possible
-	int ret = send( cd.sock, 
-		cd.buffer+cd.bufferOffset, 
-		cd.bufferSize-cd.bufferOffset,
-		MSG_NOSIGNAL
-	);
+  // send as much data as possible
+  int ret = send(cd.sock, cd.buffer + cd.bufferOffset,
+                 cd.bufferSize - cd.bufferOffset, MSG_NOSIGNAL);
 
-	if( ret == -1 )
-	{
-		fprintf( stderr, "  - conn %zu : send() error: %s\n", 
-			cid, strerror(errno) 
-		);
-		return false;
-	}
+  if (ret == -1) {
+    fprintf(stderr, "  - conn %zu : send() error: %s\n", cid, strerror(errno));
+    return false;
+  }
 
-	cd.bufferOffset += ret;
+  cd.bufferOffset += ret;
 
-	// was the whole message sent?
-	if( cd.bufferOffset == cd.bufferSize )
-	{
-		cd.expectedSize = cd.bufferSize;
+  // was the whole message sent?
+  if (cd.bufferOffset == cd.bufferSize) {
+    cd.expectedSize = cd.bufferSize;
 
-		// clean up connection buffer
-		cd.bufferSize = 0;
-		cd.bufferOffset = 0;
-		memset( cd.buffer, 0, kConnectionBufferSize );
+    // clean up connection buffer
+    cd.bufferSize = 0;
+    cd.bufferOffset = 0;
+    memset(cd.buffer, 0, kConnectionBufferSize);
 
-		// proceed with the receiving state
-		cd.state = eConnStateReceiving;
-	}
+    // proceed with the receiving state
+    cd.state = eConnStateReceiving;
+  }
 
-	// carry on handling this connection
-	return true;
+  // carry on handling this connection
+  return true;
 }
 
 //--    client_process_recv()   ///{{{1///////////////////////////////////////
-static bool client_process_recv( size_t cid, ConnectionData& cd )
-{
-#	if VERBOSE
-	printf( "  - conn %zu is read to receive\n", cid );
-#	endif
+static bool client_process_recv(size_t cid, ConnectionData &cd) {
+#if VERBOSE
+  printf("  - conn %zu is read to receive\n", cid);
+#endif
 
-	// receive all available data
-	int ret = recv( cd.sock,
-		cd.buffer+cd.bufferOffset,
-		cd.expectedSize - cd.bufferOffset,
-		0
-	);
+  // receive all available data
+  int ret = recv(cd.sock, cd.buffer + cd.bufferOffset,
+                 cd.expectedSize - cd.bufferOffset, 0);
 
-	if( 0 == ret )
-	{
-		fprintf( stderr, "  - conn %zu : connection closed by peer\n", cid );
-		return false;
-	}
-	if( -1 == ret )
-	{
-		fprintf( stderr, "  - conn %zu : error in recv() : %s\n", 
-			cid, strerror(errno) );
-		return false;
-	}
+  if (0 == ret) {
+    fprintf(stderr, "  - conn %zu : connection closed by peer\n", cid);
+    return false;
+  }
+  if (-1 == ret) {
+    fprintf(stderr, "  - conn %zu : error in recv() : %s\n", cid,
+            strerror(errno));
+    return false;
+  }
 
-	// update buffer
-	cd.bufferOffset += ret;
-	cd.buffer[cd.bufferOffset] = '\0';
+  // update buffer
+  cd.bufferOffset += ret;
+  cd.buffer[cd.bufferOffset] = '\0';
 
-	// did the whole message arrive?
-	if( cd.bufferOffset == cd.expectedSize )
-	{
-		// record end time
-#		if MEASURE_ROUND_TRIP_TIME
-		if( cd.repeatsLeft == 0 )
-		{
-			cd.roundTripEnd = get_time_stamp();
-		}
-#		endif
+  // did the whole message arrive?
+  if (cd.bufferOffset == cd.expectedSize) {
+    // record end time
+#if MEASURE_ROUND_TRIP_TIME
+    if (cd.repeatsLeft == 0) {
+      cd.roundTripEnd = get_time_stamp();
+    }
+#endif
 
-		// verify message
-#		if VERIFY_MESSAGE
-		char reconstructed[kConnectionBufferSize+1];
-		snprintf( reconstructed, kConnectionBufferSize, g_clientMessage, int(cid) );
+    // verify message
+#if VERIFY_MESSAGE
+    char reconstructed[kConnectionBufferSize + 1];
+    snprintf(reconstructed, kConnectionBufferSize, g_clientMessage, int(cid));
 
-		if( 0 != strncmp( reconstructed, cd.buffer, cd.expectedSize ) )
-		{
-			fprintf( stderr, "  - conn %zu : message mismatch!\n", cid );
-		}
-#		endif
+    if (0 != strncmp(reconstructed, cd.buffer, cd.expectedSize)) {
+      fprintf(stderr, "  - conn %zu : message mismatch!\n", cid);
+    }
+#endif
 
-		// ok, done
-		if( cd.repeatsLeft > 0 )
-		{
-			cd.state = eConnStateSending;
+    // ok, done
+    if (cd.repeatsLeft > 0) {
+      cd.state = eConnStateSending;
 
-			snprintf( cd.buffer, kConnectionBufferSize, g_clientMessage, int(cid) );
-			cd.bufferOffset = 0;
-			cd.bufferSize = strlen(cd.buffer);
+      snprintf(cd.buffer, kConnectionBufferSize, g_clientMessage, int(cid));
+      cd.bufferOffset = 0;
+      cd.bufferSize = strlen(cd.buffer);
 
-			--cd.repeatsLeft;
-		}
-		else
-		{
-			return false;
-		}
-	}
+      --cd.repeatsLeft;
+    } else {
+      return false;
+    }
+  }
 
-	return true;
+  return true;
 }
 
 //--    resolve_address()       ///{{{1///////////////////////////////////////
-static bool resolve_address( sockaddr_in& sa, const char* host, const char* port )
-{
-	// zero data
-	memset( &sa, 0, sizeof(sa) );
+static bool resolve_address(sockaddr_in &sa, const char *host,
+                            const char *port) {
+  // zero data
+  memset(&sa, 0, sizeof(sa));
 
-	// resolve server using getaddrinfo()
-	addrinfo hints;
-	memset( &hints, 0, sizeof(hints) );
-	hints.ai_family = AF_INET;
-	hints.ai_socktype = SOCK_STREAM;
-	hints.ai_protocol = IPPROTO_TCP;
+  // resolve server using getaddrinfo()
+  addrinfo hints;
+  memset(&hints, 0, sizeof(hints));
+  hints.ai_family = AF_INET;
+  hints.ai_socktype = SOCK_STREAM;
+  hints.ai_protocol = IPPROTO_TCP;
 
-	addrinfo* result = 0;
-	int ret = getaddrinfo( host, port, &hints, &result );
-	
-	if( 0 != ret )
-	{
-		fprintf( stderr, "Error - cannot resolve address: %s\n",
-			gai_strerror(ret) 
-		);
+  addrinfo *result = 0;
+  int ret = getaddrinfo(host, port, &hints, &result);
 
-		return false;
-	}
-	
-	bool ok = false;
-	for( addrinfo* res = result; res; res = res->ai_next )
-	{
-		if( res->ai_family == AF_INET 
-			&& res->ai_addrlen == sizeof(sockaddr_in) )
-		{
-			ok = true;
-			memcpy( &sa, res->ai_addr, sizeof(sockaddr_in) );
-			break;
-		}
-	}
+  if (0 != ret) {
+    fprintf(stderr, "Error - cannot resolve address: %s\n", gai_strerror(ret));
 
-	freeaddrinfo( result );
+    return false;
+  }
 
-	if( !ok )
-	{
-		fprintf( stderr, "Error - no appropriate address format\n" );
-		return false;
-	}
+  bool ok = false;
+  for (addrinfo *res = result; res; res = res->ai_next) {
+    if (res->ai_family == AF_INET && res->ai_addrlen == sizeof(sockaddr_in)) {
+      ok = true;
+      memcpy(&sa, res->ai_addr, sizeof(sockaddr_in));
+      break;
+    }
+  }
 
-	return true;
+  freeaddrinfo(result);
+
+  if (!ok) {
+    fprintf(stderr, "Error - no appropriate address format\n");
+    return false;
+  }
+
+  return true;
 }
 
 //--    connect_to_server()     ///{{{1///////////////////////////////////////
-static int connect_to_server_nonblock( const sockaddr_in& sa )
-{
-	// allocate socket
-	int fd = socket( AF_INET, SOCK_STREAM, 0 );
-	
-	if( -1 == fd )
-	{
-		perror( "socket() failed" );
-		return -1;
-	}
+static int connect_to_server_nonblock(const sockaddr_in &sa) {
+  // allocate socket
+  int fd = socket(AF_INET, SOCK_STREAM, 0);
 
-	// put socket into non-blocking mode
-	int oldFlags = fcntl( fd, F_GETFL, 0 );
-	if( -1 == oldFlags )
-	{
-		perror( "fcntl(F_GETFL) failed" );
-		close(fd);
-		return -1;
-	}
+  if (-1 == fd) {
+    perror("socket() failed");
+    return -1;
+  }
 
-	if( -1 == fcntl( fd, F_SETFL, oldFlags | O_NONBLOCK ) )
-	{
-		perror( "fcntl(F_SETFL) failed" );
-		close(fd);
-		return -1;
-	}
+  // put socket into non-blocking mode
+  int oldFlags = fcntl(fd, F_GETFL, 0);
+  if (-1 == oldFlags) {
+    perror("fcntl(F_GETFL) failed");
+    close(fd);
+    return -1;
+  }
 
-	// attempt to establish connection
-	// Note: the socket is in non-blocking mode, so we'll probably get an
-	// EINPROGRESS, which is OK.
-	if( -1 == connect( fd, (const sockaddr*)&sa, sizeof(sa) ) )
-	{
-		if( errno != EINPROGRESS )
-		{
-			perror( "connect() failed" );
-			close( fd );
-			return -1;
-		}
-	}
+  if (-1 == fcntl(fd, F_SETFL, oldFlags | O_NONBLOCK)) {
+    perror("fcntl(F_SETFL) failed");
+    close(fd);
+    return -1;
+  }
 
-#	if SET_TCPNODELAY
-	// set TCPNODELAY option on socket
-	int yes = 1;
-	if( -1 == setsockopt( fd, IPPROTO_TCP, TCP_NODELAY, &yes, sizeof(yes) ) )
-	{
-		perror( "setsockopt(TCP_NODELAY) failed" );
-		close(fd);
-		return -1;
-	}
-#	endif
+  // attempt to establish connection
+  // Note: the socket is in non-blocking mode, so we'll probably get an
+  // EINPROGRESS, which is OK.
+  if (-1 == connect(fd, (const sockaddr *)&sa, sizeof(sa))) {
+    if (errno != EINPROGRESS) {
+      perror("connect() failed");
+      close(fd);
+      return -1;
+    }
+  }
 
-	// ok
-	return fd;
+#if SET_TCPNODELAY
+  // set TCPNODELAY option on socket
+  int yes = 1;
+  if (-1 == setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, &yes, sizeof(yes))) {
+    perror("setsockopt(TCP_NODELAY) failed");
+    close(fd);
+    return -1;
+  }
+#endif
+
+  // ok
+  return fd;
 }
 
 //--    timing code         ///{{{1///////////////////////////////////////////
 
-/* Note: timer code implementations are provided for Linux, Mac OS X and 
+/* Note: timer code implementations are provided for Linux, Mac OS X and
  * Windows. If you're running this on a different platform, you'll probably
  * have to write your own code.
  *
@@ -650,67 +731,59 @@ static int connect_to_server_nonblock( const sockaddr_in& sa )
  * Linux variant. Please report errors if you encounter any.
  */
 #if MEASURE_ROUND_TRIP_TIME || MEASURE_CONNECT_TIME
-#	if defined(__linux__)
-#	include <time.h>
+#if defined(__linux__)
+#include <time.h>
 
 static timespec initTime;
-static void initialize_timer()
-{
-	clock_gettime( CLOCK_REALTIME, &initTime );
+static void initialize_timer() { clock_gettime(CLOCK_REALTIME, &initTime); }
+
+static double get_time_stamp() {
+  timespec currentTime;
+  clock_gettime(CLOCK_REALTIME, &currentTime);
+
+  return (currentTime.tv_sec - initTime.tv_sec) +
+         1e-9 * (currentTime.tv_nsec - initTime.tv_nsec);
 }
 
-static double get_time_stamp()
-{
-	timespec currentTime;
-	clock_gettime( CLOCK_REALTIME, &currentTime );
-
-	return (currentTime.tv_sec - initTime.tv_sec) + 
-		1e-9*(currentTime.tv_nsec - initTime.tv_nsec);
-}
-
-#	elif defined(_WIN32)
-#	define WIN32_LEAN_AND_MEAN
-#	include <windows.h>
+#elif defined(_WIN32)
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
 
 static LARGE_INTEGER perfFreq;
 static LARGE_INTEGER initTime;
-static void initialize_timer()
-{
-	QueryPerformanceFrequency( &perfFreq );
-	QueryPerformanceCounter( &initTime );
+static void initialize_timer() {
+  QueryPerformanceFrequency(&perfFreq);
+  QueryPerformanceCounter(&initTime);
 }
 
-static double get_time_stamp()
-{
-	LARGE_INTEGER currentTime;
-	QueryPerformanceCounter( &currentTime );
+static double get_time_stamp() {
+  LARGE_INTEGER currentTime;
+  QueryPerformanceCounter(&currentTime);
 
-	return double(currentTime.QuadPart-initTime.QuadPart)
-		/ double(perfFreq.QuadPart);
+  return double(currentTime.QuadPart - initTime.QuadPart) /
+         double(perfFreq.QuadPart);
 }
 
-#	elif defined(__MACH__) // Mac OS X
-#	include <stdint.h>
+#elif defined(__MACH__) // Mac OS X
+#include <stdint.h>
 extern "C" {
-#	include <mach/mach_time.h>
+#include <mach/mach_time.h>
 }
 
 static uint64_t initTime;
 static mach_timebase_info_data_t machData;
-static void initialize_timer()
-{
-	mach_timebase_info( &machData );
-	initTime = mach_absolute_time();
+static void initialize_timer() {
+  mach_timebase_info(&machData);
+  initTime = mach_absolute_time();
 }
-static double get_time_stamp()
-{
-	uint64_t currentTime = mach_absolute_time();
-	uint64_t elapsed = currentTime - initTime;
+static double get_time_stamp() {
+  uint64_t currentTime = mach_absolute_time();
+  uint64_t elapsed = currentTime - initTime;
 
-	return 1e-9*(elapsed * machData.numer / machData.denom);
+  return 1e-9 * (elapsed * machData.numer / machData.denom);
 }
 
-#	endif // platform
+#endif // platform
 #endif // MEASURE_ROUND_TRIP_TIME || MEASURE_CONNECT_TIME
 
-//--///}}}1//////////////// vim:syntax=cpp:foldmethod=marker:ts=4:noexpandtab: 
+//--///}}}1//////////////// vim:syntax=cpp:foldmethod=marker:ts=4:noexpandtab:

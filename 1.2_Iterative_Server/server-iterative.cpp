@@ -56,7 +56,7 @@ const int kServerPort = 5703;
 // The implementation may choose a different value, or ignore it altogether.
 const int kServerBacklog = 8;
 
-// Size of the buffer used to transfer data. A single read from the socket 
+// Size of the buffer used to transfer data. A single read from the socket
 // may return at most this much data, and consequently, a single send may
 // send at most this much data.
 const size_t kTransferBufferSize = 64;
@@ -64,7 +64,7 @@ const size_t kTransferBufferSize = 64;
 //--    constants           ///{{{1///////////////////////////////////////////
 
 /* Connection states.
- * A connection may either expect to receive data, or require data to be 
+ * A connection may either expect to receive data, or require data to be
  * sent.
  */
 enum EConnState
@@ -76,7 +76,7 @@ enum EConnState
 //--    structures          ///{{{1///////////////////////////////////////////
 
 /* Per-connection data
- * In the iterative server, there is a single instance of this structure, 
+ * In the iterative server, there is a single instance of this structure,
  * holding data for the currently active connection. A concurrent server will
  * need an instance for each active connection.
  */
@@ -87,7 +87,7 @@ struct ConnectionData
 	int sock; // file descriptor of the connections socket.
 
 	// items related to buffering.
-	size_t bufferOffset, bufferSize; 
+	size_t bufferOffset, bufferSize;
 	char buffer[kTransferBufferSize+1];
 };
 
@@ -95,10 +95,10 @@ struct ConnectionData
 
 /* Receive data and place it in the connection's buffer.
  *
- * Requires that ConnectionData::state is eConnStateReceiving; if not, an 
- * assertation fault is generated. 
+ * Requires that ConnectionData::state is eConnStateReceiving; if not, an
+ * assertation fault is generated.
  *
- * If _any_ data is received, the connection's state is transitioned to 
+ * If _any_ data is received, the connection's state is transitioned to
  * eConnStateSending.
  *
  * Returns `true' if the connection remains open and further processing is
@@ -109,10 +109,10 @@ static bool process_client_recv( ConnectionData& cd );
 
 /* Send data from the connection's buffer.
  *
- * Requires that ConnectionData::state is eConnStateSending; if not, an 
+ * Requires that ConnectionData::state is eConnStateSending; if not, an
  * asseration fault is generated.
  *
- * When all data is sent, the connection's state is transitioned to 
+ * When all data is sent, the connection's state is transitioned to
  * eConnStateReceiving. If data remains in the buffer, no state-transition
  * occurs.
  *
@@ -128,13 +128,13 @@ static bool process_client_send( ConnectionData& cd );
  */
 static bool set_socket_nonblocking( int fd );
 
-/* Returns `true' if the connection `cd' has an invalid socket (-1), and 
+/* Returns `true' if the connection `cd' has an invalid socket (-1), and
  * `false' otherwise.
  */
 static bool is_invalid_connection( const ConnectionData& cd );
 
 
-/* Sets up a listening socket on `port'. 
+/* Sets up a listening socket on `port'.
  *
  * Returns, if successful, the new socket fd. On error, -1 is returned.
  */
@@ -143,6 +143,20 @@ static int setup_server_socket( short port );
 //--    main()              ///{{{1///////////////////////////////////////////
 int main( int argc, char* argv[] )
 {
+    // I.a.4 Two error handling strategies
+    // 1. Want to catch errors that happen on the host server machine in case of initialization errors
+    //   i.e. can't connect to desired ports, etc.
+    // 2. We also want to catch unknown client errors since we cannot guarantee what they are going to
+    //   send to the server. In the event of an error we still need to service other clients so we should
+    //   be properly handling those client errors instead of allowing them to shutdown the whole server.
+    //
+    // accept() send() and recv() error conditions
+    // It would be unreasonable to try and continue for the following error conditions:
+    // EINVAL - socket is not listening for connections, would need to properly setup the connection before retrying
+    // ENOTSOCK - the supplied fd is not a socket so retry would not magically change the fd to a socket
+    // EBADF - similar to ENOTSOCK, the supplied arg is not a fd and retry wouldn't magically change it into one
+    // EOPNOTSUPP - a bit in the flags arg is not appropriate for the socket type, would need to determine what that properly is at compile time not runtime
+    //
 	int serverPort = kServerPort;
 
 	// did the user specify a port?
@@ -230,6 +244,11 @@ static bool process_client_recv( ConnectionData& cd )
 	assert( cd.state == eConnStateReceiving );
 
 	// receive from socket
+	// I.a.2
+	// a) ret = -1 error case
+	// b) ret = 0 when no messages available to be received and peer performed shutdown
+	// c) 0 < ret < buffersize; the full message has been retrieved and nothing additional in buffer
+	// d) ret = buffersize; more data to be retrieved, buffer is full
 	ssize_t ret = recv( cd.sock, cd.buffer, kTransferBufferSize, 0 );
 
 	if( 0 == ret )
@@ -271,8 +290,10 @@ static bool process_client_send( ConnectionData& cd )
 	assert( cd.state == eConnStateSending );
 
 	// send as much data as possible from buffer
-	ssize_t ret = send( cd.sock, 
-		cd.buffer+cd.bufferOffset, 
+	// I.a.3 error with -1 with ECONNRESET errorno
+	// MSG_NOSIGNAL doesn't generate SIGPIPE so that way the program doesn't get killed on error and can continue
+	ssize_t ret = send( cd.sock,
+		cd.buffer+cd.bufferOffset,
 		cd.bufferSize-cd.bufferOffset,
 		MSG_NOSIGNAL // suppress SIGPIPE signals, generate EPIPE instead
 	);
@@ -280,7 +301,7 @@ static bool process_client_send( ConnectionData& cd )
 	if( -1 == ret )
 	{
 #		if VERBOSE
-		printf( "  socket %d - error on send: '%s'\n", cd.sock, 
+		printf( "  socket %d - error on send: '%s'\n", cd.sock,
 			strerror(errno) );
 		fflush( stdout );
 #		endif
@@ -315,10 +336,11 @@ static int setup_server_socket( short port )
 	}
 
 	// bind socket to local address
-	sockaddr_in servAddr; 
+	sockaddr_in servAddr;
 	memset( &servAddr, 0, sizeof(servAddr) );
 
 	servAddr.sin_family = AF_INET;
+	// I.a.1 exercise binding address of 0.0.0.0
 	servAddr.sin_addr.s_addr = htonl(INADDR_ANY);
 	servAddr.sin_port = htons(port);
 
@@ -342,7 +364,7 @@ static int setup_server_socket( short port )
 	}
 
 	char actualBuff[128];
-	printf( "Socket is bound to %s %d\n", 
+	printf( "Socket is bound to %s %d\n",
 		inet_ntop( AF_INET, &actualAddr.sin_addr, actualBuff, sizeof(actualBuff) ),
 		ntohs(actualAddr.sin_port)
 	);
@@ -401,4 +423,4 @@ static bool is_invalid_connection( const ConnectionData& cd )
 	return cd.sock == -1;
 }
 
-//--///}}}1//////////////// vim:syntax=cpp:foldmethod=marker:ts=4:noexpandtab: 
+//--///}}}1//////////////// vim:syntax=cpp:foldmethod=marker:ts=4:noexpandtab:
