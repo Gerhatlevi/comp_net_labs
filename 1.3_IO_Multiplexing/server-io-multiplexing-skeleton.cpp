@@ -185,8 +185,10 @@ int main( int argc, char* argv[] )
 			switch(connections[i].state) {
 			    case eConnStateReceiving:
 					FD_SET(conn_fd, &readfds);
+					break;
            	    case eConnStateSending:
          			FD_SET(conn_fd, &writefds);
+                    break;
 			}
 		}
 
@@ -254,16 +256,17 @@ int main( int argc, char* argv[] )
 		// 3) If it is in the writefds set, write send to that socket, using process_client_send().
 		// 4) Close and remove sockets if their connection was terminated.
 		for( size_t i = 0; i < connections.size(); ++i ){
-		    if (connections[i].state == eConnStateReceiving && FD_ISSET(connections[i].sock, &readfds)){
-				bool conn_open = process_client_recv(connections[i]);
-				if (!conn_open)
-				    connections[i].sock = -1;
+		    bool keepAlive = true;
+		    if (FD_ISSET(connections[i].sock, &readfds)){
+				keepAlive = process_client_recv(connections[i]);
 			}
 		    else if (connections[i].state == eConnStateSending && FD_ISSET(connections[i].sock, &writefds)){
-				bool conn_open = process_client_send(connections[i]);
-				if (!conn_open)
-				    connections[i].sock = -1;
+				keepAlive = process_client_send(connections[i]);
 		    }
+			if (!keepAlive) {
+			    close(connections[i].sock);
+			    connections[i].sock = -1;
+			}
 		}
 
 		// clear all sockets that are invalid
