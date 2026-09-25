@@ -1,20 +1,15 @@
 /*********************************************************** -- HEAD -{{{1- */
-/* Echo Server for Network API Lab: Part I in Internet Technology 2011.
+/* I/O multiplexing server with concurrent connections.
  *
- * Iterative server capable of accepting and processing a single connection
- * at any given time. Data received from the connection is simply sent back
- * unmodified ("echoed").
+ * This is just a skeleton code, to help you design your solution.
+ * Search for:
+ * 1) NOTEs: describing important aspects of the design that you should
+ *	be aware of to help you towards your solution.
+ * 2) TODOs: that are the main points where you need to add code.
  *
- * Build the server using e.g.
- * 		$ g++ -Wall -Wextra -o server-iter server-iterative.cpp
- *
- * Start using
- * 		$ ./server-iter
- * or
- * 		$ ./server-iter 31337
- * to listen on a port other than the default 5703.
  */
 /******************************************************************* -}}}1- */
+
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -26,11 +21,12 @@
 #include <unistd.h>
 
 #include <arpa/inet.h>
+#include <sys/epoll.h>
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
 
-#include <vector>
+#include <unordered_map>
 #include <algorithm>
 
 //--//////////////////////////////////////////////////////////////////////////
@@ -44,8 +40,8 @@
 // no blocking operations other than select() should occur. (If an blocking
 // operation is attempted, a EAGAIN or EWOULDBLOCK error is raised, probably
 // indicating a bug in the code!)
-#define NONBLOCKING 0
-
+// NOTE: make sure NONBLOCKING is set to 1 for this lab.
+#define NONBLOCKING 1
 
 // Default port of the server. May be overridden by specifying a different
 // port as the first command line argument to the server program.
@@ -140,6 +136,8 @@ static bool is_invalid_connection( const ConnectionData& cd );
  */
 static int setup_server_socket( short port );
 
+#define MAX_EVENTS 15
+
 //--    main()              ///{{{1///////////////////////////////////////////
 int main( int argc, char* argv[] )
 {
@@ -155,71 +153,127 @@ int main( int argc, char* argv[] )
 	printf( "Attempting to bind to port %d\n", serverPort );
 #	endif
 
+
 	// set up listening socket - see setup_server_socket() for details.
 	int listenfd = setup_server_socket( serverPort );
 
 	if( -1 == listenfd )
 		return 1;
 
+	// create the epoll fd
+	struct epoll_event ev, events[MAX_EVENTS];
+
+	int epollfd = epoll_create1(0);
+	if (epollfd == -1) {
+		perror("epoll_create1");
+		exit(EXIT_FAILURE);
+	}
+
+	ev.events = EPOLLIN;
+	ev.data.fd = listenfd;
+	if (epoll_ctl(epollfd, EPOLL_CTL_ADD, listenfd, &ev) == -1){
+		perror("epoll_ctl: listen_sock");
+		exit(EXIT_FAILURE);
+	}
+
+	int nfds;
+
+	// declare a data structure that will keep track of one ConnectionData
+	// struct for each open connection. E.g. you can use a vector (see Appendix E
+	// on the lab manual).
+	std::unordered_map<int,ConnectionData> connections;
+
 	// loop forever
 	while( 1 )
 	{
-		sockaddr_in clientAddr;
-		socklen_t addrSize = sizeof(clientAddr);
-
-		// accept a single incoming connection
-		int clientfd = accept( listenfd, (sockaddr*)&clientAddr, &addrSize );
-
-		if( -1 == clientfd )
-		{
-			perror( "accept() failed" );
-			continue; // attempt to accept a different client.
+		// wait for an event using select()
+		// NOTE 1: we only need one call to select() throughout our program.
+		// NOTE 2: pay attention to the first argument of select. It should be the
+		// maximum VALUE of all tracked file descriptors + 1.
+		nfds = epoll_wait(epollfd, events, MAX_EVENTS, -1);
+		if (nfds == -1){
+			perror("epoll_wait");
+			exit(EXIT_FAILURE);
 		}
 
+
+		// NOTE: if listenfd is in the readfds set after the return of select(),
+		// it means we have a new incomming connection, which we need to serve, just as we did in Lab 1.2.
+		for (int n = 0; n < nfds; ++n){
+			if (events[n].data.fd == listenfd){
+				sockaddr_in clientAddr;
+				socklen_t addrSize = sizeof(clientAddr);
+
+				// accept a single incoming connection
+				int clientfd = accept( listenfd, (sockaddr*)&clientAddr, &addrSize );
+
+				if( -1 == clientfd )
+				{
+					perror( "accept() failed" );
+					continue; // attempt to accept a different client.
+				}
+
 #			if VERBOSE
-		// print some information about the new client
-		char buff[128];
-		printf( "Connection from %s:%d -> socket %d\n",
-			inet_ntop( AF_INET, &clientAddr.sin_addr, buff, sizeof(buff) ),
-			ntohs(clientAddr.sin_port),
-			clientfd
-		);
-		fflush( stdout );
+				// print some information about the new client
+				char buff[128];
+				printf( "Connection from %s:%d -> socket %d\n",
+					inet_ntop( AF_INET, &clientAddr.sin_addr, buff, sizeof(buff) ),
+					ntohs(clientAddr.sin_port),
+					clientfd
+				);
+				fflush( stdout );
 #			endif
 
 #			if NONBLOCKING
-		// enable non-blocking sends and receives on this socket
-		if( !set_socket_nonblocking( clientfd ) )
-			continue;
+				// enable non-blocking sends and receives on this socket
+				if( !set_socket_nonblocking( clientfd ) )
+					continue;
 #			endif
 
-		// initialize connection data
-		ConnectionData connData;
-		memset( &connData, 0, sizeof(connData) );
+				// initialize connection data
+				ConnectionData connData;
+				memset( &connData, 0, sizeof(connData) );
 
-		connData.sock = clientfd;
-		connData.state = eConnStateReceiving;
+				connData.sock = clientfd;
+				connData.state = eConnStateReceiving;
 
-		// Repeatedly receive and re-send data from the connection. When
-		// the connection closes, process_client_*() will return false, no
-		// further processing is done.
-		bool processFurther = true;
-		while( processFurther )
-		{
-			while( processFurther && connData.state == eConnStateReceiving )
-				processFurther = process_client_recv( connData );
+				// add connData in your data structure so that you can keep track of that socket.
+				connections.insert({clientfd, connData});
 
-			while( processFurther && connData.state == eConnStateSending )
-				processFurther = process_client_send( connData );
+				// add the event to the epoll structure
+				ev.events = EPOLLIN | EPOLLOUT;
+				ev.data.fd = clientfd;
+				if (epoll_ctl(epollfd, EPOLL_CTL_ADD, clientfd, &ev) == -1){
+					perror("epoll_ctl: clientfd");
+					exit(EXIT_FAILURE);
+				}
+			}
+			else {
+				int conn_fd = events[n].data.fd;
+				ConnectionData* connection = &connections[conn_fd];
+
+			        bool keepAlive = true;
+				if (connection->state == eConnStateReceiving && events[n].events & EPOLLIN){
+					keepAlive = process_client_recv(*connection);
+				}
+				else if (connection->state == eConnStateSending && events[n].events & EPOLLOUT){
+					keepAlive = process_client_send(*connection);
+				}
+
+				if (!keepAlive) {
+				    close(connection->sock);
+				    connections.erase(conn_fd);
+				}
+			
+			}
+		
 		}
-
-		// done - close connection
-		close( connData.sock );
 	}
 
 	// The program will never reach this part, but for demonstration purposes,
 	// we'll clean up the server resources here and then exit nicely.
 	close( listenfd );
+	close( epollfd );
 
 	return 0;
 }
