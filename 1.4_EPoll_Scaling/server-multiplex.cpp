@@ -136,7 +136,7 @@ static bool is_invalid_connection( const ConnectionData& cd );
  */
 static int setup_server_socket( short port );
 
-#define MAX_EVENTS 15
+#define MAX_EVENTS 8
 
 //--    main()              ///{{{1///////////////////////////////////////////
 int main( int argc, char* argv[] )
@@ -276,9 +276,9 @@ int main( int argc, char* argv[] )
 				    close(connection->sock);
 				    connections.erase(conn_fd);
 				}
-			
+
 			}
-		
+
 		}
 	}
 
