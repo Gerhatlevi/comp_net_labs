@@ -241,7 +241,7 @@ int main( int argc, char* argv[] )
 				connections.insert({clientfd, connData});
 
 				// add the event to the epoll structure
-				ev.events = EPOLLIN | EPOLLOUT;
+				ev.events = EPOLLIN;
 				ev.data.fd = clientfd;
 				if (epoll_ctl(epollfd, EPOLL_CTL_ADD, clientfd, &ev) == -1){
 					perror("epoll_ctl: clientfd");
@@ -253,11 +253,23 @@ int main( int argc, char* argv[] )
 				ConnectionData* connection = &connections[conn_fd];
 
 			        bool keepAlive = true;
-				if (connection->state == eConnStateReceiving && events[n].events & EPOLLIN){
+				if (events[n].events & EPOLLIN){
 					keepAlive = process_client_recv(*connection);
+					ev.events = EPOLLOUT;
+					ev.data.fd = conn_fd;
+					if (epoll_ctl(epollfd, EPOLL_CTL_MOD, conn_fd, &ev) == -1){
+						perror("epoll_ctl: clientfd");
+						exit(EXIT_FAILURE);
+					}
 				}
-				else if (connection->state == eConnStateSending && events[n].events & EPOLLOUT){
+				else if (events[n].events & EPOLLOUT){
 					keepAlive = process_client_send(*connection);
+					ev.events = EPOLLIN;
+					ev.data.fd = conn_fd;
+					if (epoll_ctl(epollfd, EPOLL_CTL_MOD, conn_fd, &ev) == -1){
+						perror("epoll_ctl: clientfd");
+						exit(EXIT_FAILURE);
+					}
 				}
 
 				if (!keepAlive) {
